@@ -1,7 +1,7 @@
 int p = 25;
 
 uint8_t row[] = { 34, 35, 32, 33, 25 };    // +
-uint8_t col[] = { /* groen */ 4, 17, 18, /* rood */ 16, 5, 19 };  // p fet
+uint8_t col[] = { /* groen */ 4, 17, 18, /* rood */ 16, 5, 19 };  // n fet
 
 void testmatrix(int ms) {
   for (int c = 0; c < sizeof(col); c++) {
