@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
+#define OTA_PASSWORD "bla"
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <esp_task_wdt.h>
@@ -13,7 +15,7 @@ PubSubClient client(espClient);
 uint8_t row[] = { 27, 26, 32, 33, 25 };    // +
 uint8_t col[] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
 int leds[30];
-float brightness = .1;
+float brightness = .3;
 
 void setup_wifi() {
   Serial.printf("Connecting to %s\n", ssid);
@@ -81,7 +83,11 @@ void matrix() {
     digitalWrite(col[c], HIGH);
     delayMicroseconds(c >= 3 ? brightness*5 : brightness*10);
     digitalWrite(col[c], LOW);
-    delayMicroseconds(c >= 3 ? 10 : 5);
+    if (brightness < 0.2) {
+      delayMicroseconds((.2 - brightness) * (c >= 3 ? 500 : 250));
+    } else {
+      delayMicroseconds(c >= 3 ? 10 : 5);
+    }
   }
   
   /*  
@@ -105,6 +111,36 @@ void setup() {
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);  
+
+  ArduinoOTA.setHostname("millennium");
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA.onStart([]() {
+    for (int i = 0; i < 30; i++) leds[i] = 1;
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    float p = (float) progress / total;
+    float maxled = p * 30.0;
+    for (int i = 0; i < maxled; i++) {
+      leds[i] = 0;
+    }
+    unsigned long end = millis() + 1;
+    while (millis() < end) matrix();
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    for (int i = 0; i < 15; i++) leds[i] = 1;
+    for (int i = 15; i < 30; i++) leds[i] = 0;
+    unsigned long end = millis() + 5000;
+    while (millis() < end) matrix();
+  });
+  ArduinoOTA.onEnd([]() {
+    for (int i = 0; i < 15; i++) leds[i] = 0;
+    for (int i = 15; i < 30; i++) leds[i] = 1;
+    unsigned long end = millis() + 2000;
+    while (millis() < end) matrix();
+  });
+  
+  ArduinoOTA.begin();
+
 }
 
 void loop() {
@@ -114,4 +150,6 @@ void loop() {
   if (i++ % 40 == 0) client.loop();
   
   matrix();
+
+  ArduinoOTA.handle();
 }
