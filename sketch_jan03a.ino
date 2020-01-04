@@ -17,11 +17,53 @@ uint8_t col[] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
 int leds[30];
 float brightness = .3;
 
+void matrix() {
+  for (int c = 0; c < sizeof(col); c++) {
+    for (int r = 0; r < sizeof(row); r++) {
+      digitalWrite(row[r], leds[c * 5 + r] );
+    }
+    digitalWrite(col[c], HIGH);
+    delayMicroseconds(c >= 3 ? brightness*5 : brightness*10);
+    digitalWrite(col[c], LOW);
+    if (brightness < 0.2) {
+      delayMicroseconds((.2 - brightness) * (c >= 3 ? 500 : 250));
+    } else {
+      delayMicroseconds(c >= 3 ? 10 : 5);
+    }
+  }  
+  /*  
+  for (int x = 0; x < 30; x++) {
+    digitalWrite(col[x / 5], leds[x]);
+    digitalWrite(row[x % 5], leds[x]);
+    //delay(1);
+    delayMicroseconds(x >= 15 ? 15 : 20);
+    digitalWrite(col[x / 5], LOW);
+    digitalWrite(row[x % 5], LOW);
+  }
+  */
+}
+
+void matrixdelay(int ms) {
+  unsigned long end = millis() + ms;
+  while(millis() < end) matrix();
+}
+void all(int ms, bool red, bool green, float b = 1) {
+  float oldb = brightness;
+  brightness = b;
+  for (int i = 0; i < 15; i++) leds[i] = red;
+  for (int i = 15; i < 30; i++) leds[i] = green;
+  matrixdelay(ms);
+  brightness = oldb;
+}
+
+
+
 void setup_wifi() {
   Serial.printf("Connecting to %s\n", ssid);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    all(300, true, true, .2);
+    all(200, false, false);
     Serial.print(".");
   }
 
@@ -64,43 +106,20 @@ void reconnect() {
     Serial.print("Connecting to MQTT server");
     String clientId = "hoera10jaar-";
     clientId += String(random(0xffff), HEX);
+
+    all(500, true, true, .1);
+    all(1, false, false, .1);
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       client.subscribe("hoera10jaar/#");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
-      delay(5000);
+      all(5000, true, false, .1);
     }
   }
 }
 
-void matrix() {
-  for (int c = 0; c < sizeof(col); c++) {
-    for (int r = 0; r < sizeof(row); r++) {
-      digitalWrite(row[r], leds[c * 5 + r] );
-    }
-    digitalWrite(col[c], HIGH);
-    delayMicroseconds(c >= 3 ? brightness*5 : brightness*10);
-    digitalWrite(col[c], LOW);
-    if (brightness < 0.2) {
-      delayMicroseconds((.2 - brightness) * (c >= 3 ? 500 : 250));
-    } else {
-      delayMicroseconds(c >= 3 ? 10 : 5);
-    }
-  }
-  
-  /*  
-  for (int x = 0; x < 30; x++) {
-    digitalWrite(col[x / 5], leds[x]);
-    digitalWrite(row[x % 5], leds[x]);
-    //delay(1);
-    delayMicroseconds(x >= 15 ? 15 : 20);
-    digitalWrite(col[x / 5], LOW);
-    digitalWrite(row[x % 5], LOW);
-  }
-  */
-}
 
 void setup() {
   Serial.begin(115200);
@@ -115,7 +134,7 @@ void setup() {
   ArduinoOTA.setHostname("millennium");
   ArduinoOTA.setPassword(OTA_PASSWORD);
   ArduinoOTA.onStart([]() {
-    for (int i = 0; i < 30; i++) leds[i] = 1;
+    all(1, true, true);
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     float p = (float) progress / total;
@@ -123,20 +142,13 @@ void setup() {
     for (int i = 0; i < maxled; i++) {
       leds[i] = 0;
     }
-    unsigned long end = millis() + 1;
-    while (millis() < end) matrix();
+    matrixdelay(1);
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    for (int i = 0; i < 15; i++) leds[i] = 1;
-    for (int i = 15; i < 30; i++) leds[i] = 0;
-    unsigned long end = millis() + 5000;
-    while (millis() < end) matrix();
+    all(5000, true, false);
   });
   ArduinoOTA.onEnd([]() {
-    for (int i = 0; i < 15; i++) leds[i] = 0;
-    for (int i = 15; i < 30; i++) leds[i] = 1;
-    unsigned long end = millis() + 2000;
-    while (millis() < end) matrix();
+    all(2000, false, true);
   });
   
   ArduinoOTA.begin();
