@@ -60,12 +60,16 @@ void all(int ms, bool red, bool green, float b = 1) {
 
 void setup_wifi() {
   Serial.printf("Connecting to %s\n", ssid);
-  int attempts = 0;
   WiFi.begin(ssid, password);
+  wait_wifi();
+}
+
+void wait_wifi() {
+  int attempts = 0;
   while (WiFi.status() != WL_CONNECTED) {
     if (attempts++ > 5) {
-      all(200, true, false, .1);
-      all(200, false, false);
+      all(400, true, false, .1);
+      all(400, false, false);
     } else {
       delay(100);
     }
@@ -132,7 +136,10 @@ void setup() {
   
   Serial.begin(115200);
   Serial.println("o hai");
-  
+
+  esp_task_wdt_init(30 /* seconds */, true);
+  esp_err_t err = esp_task_wdt_add(NULL);
+  Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
 
   setup_wifi();
   client.setServer(mqtt_server, 1883);
@@ -149,7 +156,8 @@ void setup() {
     for (int i = 0; i < maxled; i++) {
       leds[i] = 0;
     }
-    matrixdelay(1);
+    matrixdelay(2);
+    esp_task_wdt_reset();
   });
   ArduinoOTA.onError([](ota_error_t error) {
     all(5000, true, false);
@@ -164,11 +172,20 @@ void setup() {
 
 void loop() {
   static int i = 0;
-  if (!client.connected()) reconnect();
+  if (WiFi.status() != WL_CONNECTED) {
+    // Werkt niet, status blijft WL_CONNECTED ook als AP weg is...
+    // Dus hij blijft straks in de mqtt reconnect() hangen. Watchdog grijpt in.
+    Serial.println("Reconnecting wifi...\n");
+    WiFi.disconnect();
+    setup_wifi();
+  }
+  
+  if (WiFi.status() == WL_CONNECTED && !client.connected()) reconnect();
   
   if (i++ % 40 == 0) client.loop();
   
   matrix();
 
   ArduinoOTA.handle();
+  esp_task_wdt_reset();
 }
