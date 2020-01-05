@@ -122,10 +122,13 @@ void reconnect() {
 
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("o hai");
   for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
   for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
+  all(50, false, true);
+  
+  Serial.begin(115200);
+  Serial.println("o hai");
+  
 
   setup_wifi();
   client.setServer(mqtt_server, 1883);
@@ -152,7 +155,7 @@ void setup() {
   });
   
   ArduinoOTA.begin();
-
+  
 }
 
 void loop() {
