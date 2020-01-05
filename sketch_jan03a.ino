@@ -60,10 +60,15 @@ void all(int ms, bool red, bool green, float b = 1) {
 
 void setup_wifi() {
   Serial.printf("Connecting to %s\n", ssid);
+  int attempts = 0;
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    all(100, true, true, .2);
-    all(100, false, false);
+    if (attempts++ > 5) {
+      all(200, true, false, .1);
+      all(200, false, false);
+    } else {
+      delay(100);
+    }
     Serial.print(".");
   }
 
@@ -107,15 +112,13 @@ void reconnect() {
     String clientId = "hoera10jaar-";
     clientId += String(random(0xffff), HEX);
 
-    all(500, true, true, .1);
-    all(1, false, false, .1);
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
       client.subscribe("hoera10jaar/+");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
-      all(5000, true, false, .1);
+      all(5000, true, true, .1);
     }
   }
 }
@@ -124,7 +127,8 @@ void reconnect() {
 void setup() {
   for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
   for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
-  all(50, false, true);
+  all(50, false, true, .1);
+  all(0, false, false, .1);
   
   Serial.begin(115200);
   Serial.println("o hai");
