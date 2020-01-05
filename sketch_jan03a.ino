@@ -62,8 +62,8 @@ void setup_wifi() {
   Serial.printf("Connecting to %s\n", ssid);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    all(300, true, true, .2);
-    all(200, false, false);
+    all(100, true, true, .2);
+    all(100, false, false);
     Serial.print(".");
   }
 
@@ -111,7 +111,7 @@ void reconnect() {
     all(1, false, false, .1);
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
-      client.subscribe("hoera10jaar/#");
+      client.subscribe("hoera10jaar/+");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
