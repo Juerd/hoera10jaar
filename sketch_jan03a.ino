@@ -5,7 +5,10 @@
 #include <PubSubClient.h>
 #include <esp_task_wdt.h>
 #include <WiFi.h>
+#include <WebServer.h>
+#include <HTTP_Method.h>
 
+#include <SPIFFS.h>
 
 
 #define Sprintf(f, ...) ({ char* s; asprintf(&s, f, __VA_ARGS__); String r = s; free(s); r; })
@@ -65,8 +68,14 @@ void all(int ms, bool red, bool green, float b = 1) {
 
 
 void setup_wifi() {
-  Serial.printf("Connecting to %s\n", ssid);
-  WiFi.begin(ssid, password);
+  String ssid = SPIFFS.open("/wifi-ssid", "r").readString();
+  String pw = SPIFFS.open("/wifi-pw", "r").readString();
+  if (ssid.length() == 0) {
+    Serial.println("First contact!\n");
+    setup_wifi_portal();
+  }
+  Serial.printf("Connecting to %s\n", ssid.c_str());
+  WiFi.begin(ssid.c_str(), pw.c_str());
   wait_wifi();
 }
 
@@ -74,12 +83,17 @@ void wait_wifi() {
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED) {
     if (attempts++ > 5) {
-      all(400, true, false, .1);
-      all(400, false, false);
+      all(500, true, false, .1);
+      all(500, false, false);
+      esp_task_wdt_reset();
     } else {
       delay(100);
     }
-    Serial.print(".");
+    if (attempts > 30) {
+      Serial.println("Giving up. Starting config portal.");
+      setup_wifi_portal();
+    }
+    Serial.println(attempts);
   }
 
   randomSeed(micros());  // ?
@@ -88,6 +102,59 @@ void wait_wifi() {
 
 
 
+void setup_wifi_portal() {
+  static WebServer http(80);  
+  WiFi.softAP(me.c_str());
+  delay(500);
+  uint32_t _ip = WiFi.softAPIP();
+  
+  const String myip = Sprintf("%d.%d.%d.%d", (_ip & 0xff), (_ip >> 8 & 0xff), (_ip >> 16 & 0xff), (_ip >> 24));
+  Serial.println(myip);
+  
+  http.on("/", HTTP_GET, []() {
+    int n = WiFi.scanNetworks();
+    String html = "<!DOCTYPE html>\n<meta charset=UTF-8><title>" + me + "</title>"
+    + "<form action=/restart method=post>SSID: %<br><input type=submit value=restart></form>"
+    + "<hr><h2>Configure</h2><form method=post>SSID: <select name=ssid>";
+    String current = SPIFFS.open("/wifi-ssid", "r").readString();
+    if (current.length()) {
+      current.replace("<", "&lt;");
+      html.replace("%", current);
+    } else {
+      html.replace("%", "(not set)");
+    }    
+    for (int i = 0; i< n; i++) {
+      String opt = "<option>%</option>";
+      String ssid = WiFi.SSID(i);
+      ssid.replace("<", "&lt;");
+      opt.replace("%", ssid);
+      html += opt;
+    }
+    html += "</select><br>Password: <input name=pw> <input type=submit></form>";
+    http.send(200, "text/html", html);
+  });
+  http.on("/", HTTP_POST, []() {
+    File s = SPIFFS.open("/wifi-ssid", "w");
+    s.print(http.arg("ssid"));
+    s.close();
+    File p = SPIFFS.open("/wifi-pw", "w");
+    p.print(http.arg("pw"));
+    p.close();
+    http.send(200, "text/html", "<!DOCTYPE html><meta charset=UTF-8>\n<title>ok</title>OK! <a href=/>back</a>");   
+
+  });
+  http.on("/restart", HTTP_POST, []() {
+    ESP.restart();
+  });
+  http.begin();
+  for (;;) {
+    bool x = millis() % 1000 < 500;
+    all(1, x, !x, .1);
+    http.handleClient();
+    esp_task_wdt_reset();
+  }
+  
+}
 
 void callback(char* topic, byte* payload, unsigned int length) {
   int lednr = -1;
@@ -147,8 +214,7 @@ void setup() {
   esp_err_t err = esp_task_wdt_add(NULL);
   Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
 
-  setup_wifi_portal();
-
+  SPIFFS.begin(true);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);  
