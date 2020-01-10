@@ -81,6 +81,8 @@ void setup_wifi() {
 
 void wait_wifi() {
   int attempts = 0;
+  String r = SPIFFS.open("/wifi-retry", "r").readString();
+  bool retry = r.length();
   while (WiFi.status() != WL_CONNECTED) {
     if (attempts++ > 5) {
       all(500, true, false, .1);
@@ -89,7 +91,7 @@ void wait_wifi() {
     } else {
       delay(100);
     }
-    if (attempts > 30) {
+    if (attempts > 30 && !retry) {
       Serial.println("Giving up. Starting config portal.");
       setup_wifi_portal();
     }
@@ -114,7 +116,7 @@ void setup_wifi_portal() {
   http.on("/", HTTP_GET, []() {
     int n = WiFi.scanNetworks();
     String html = "<!DOCTYPE html>\n<meta charset=UTF-8><title>" + me + "</title>"
-    + "<form action=/restart method=post>SSID: %<br><input type=submit value=restart></form>"
+    + "<form action=/restart method=post>Currently configured SSID: %<br><input type=submit value=restart></form>"
     + "<hr><h2>Configure</h2><form method=post>SSID: <select name=ssid>";
     String current = SPIFFS.open("/wifi-ssid", "r").readString();
     if (current.length()) {
@@ -126,11 +128,19 @@ void setup_wifi_portal() {
     for (int i = 0; i< n; i++) {
       String opt = "<option>%</option>";
       String ssid = WiFi.SSID(i);
+      if (ssid == current) opt.replace(">", " selected>");
       ssid.replace("<", "&lt;");
       opt.replace("%", ssid);
       html += opt;
     }
-    html += "</select><br>Password: <input name=pw> <input type=submit></form>";
+    String retry = SPIFFS.open("/wifi-retry", "r").readString();
+
+    html += "</select><br>Password: <input name=pw><br>"
+      "<label><input type=radio name=retry value=no> Start this insecure wifi portal after wifi connection timeout</label><br>"
+      "<label><input type=radio name=retry value=yes> Keep trying to connect to wifi (requires flashing firmware to change config)</label><br>"
+      "<input type=submit></form>";
+    retry = retry.length() ? "=yes" : "=no";
+    html.replace(retry, retry + " checked");
     http.send(200, "text/html", html);
   });
   http.on("/", HTTP_POST, []() {
@@ -140,7 +150,10 @@ void setup_wifi_portal() {
     File p = SPIFFS.open("/wifi-pw", "w");
     p.print(http.arg("pw"));
     p.close();
-    http.send(200, "text/html", "<!DOCTYPE html><meta charset=UTF-8>\n<title>ok</title>OK! <a href=/>back</a>");   
+    File r = SPIFFS.open("/wifi-retry", "w");
+    r.print(http.arg("retry") == "yes" ? "x" : "");
+    r.close();
+    http.send(200, "text/html", "<!DOCTYPE html><meta charset=UTF-8>\n<title>ok</title>Stored, maybe. <a href=/>Go see if it worked</a>");   
 
   });
   http.on("/restart", HTTP_POST, []() {
