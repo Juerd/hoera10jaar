@@ -24,10 +24,13 @@ PubSubClient mqtt(espClient);
 
 void matrix() {
   for (int c = 0; c < sizeof(col); c++) {
+    bool any = false;
     for (int r = 0; r < sizeof(row); r++) {
-      digitalWrite(row[r], leds[c * 5 + r] );
+      bool on = leds[c * 5 + r];
+      if (on) any = true;
+      digitalWrite(row[r], on);
     }
-    digitalWrite(col[c], HIGH);
+    digitalWrite(col[c], any);
     delayMicroseconds(c >= 3 ? brightness*5 : brightness*10);
     digitalWrite(col[c], LOW);
     if (brightness < 0.2) {
