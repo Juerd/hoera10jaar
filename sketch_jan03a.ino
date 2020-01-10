@@ -13,9 +13,8 @@
 
 #define Sprintf(f, ...) ({ char* s; asprintf(&s, f, __VA_ARGS__); String r = s; free(s); r; })
 
-const char* ssid = "revspace-pub-2.4ghz";
-const char* password = "";
 const char* mqtt_server = "hoera10jaar.revspace.nl";
+
 String me = "decennium-";
 
 WiFiClient espClient;
