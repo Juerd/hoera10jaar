@@ -95,29 +95,52 @@ void check_button() {
 
 //////// end-user configurable
 
+String read(const char* fn) {
+  File f = SPIFFS.open(fn, "r");
+  String r = f.readString();
+  f.close();
+  return r;
+}
+
+void store(const char* fn, String content) {
+  File f = SPIFFS.open(fn, "w");
+  f.print(content);
+  f.close();
+}
+
 String pwgen() {
   const char* filename   = "/ota-password";
   const char* passchars  = "ABCEFGHJKLMNPRSTUXYZabcdefhkmnorstvxz23456789-#@%^<>";
 
-  File pwfile = SPIFFS.open(filename, "r");
-  String password = pwfile.readString();
-  pwfile.close();
-
+  String password = read(filename);
+  
   if (password.length() == 0) {
     for (int i = 0; i < 16; i++) {
        password.concat( passchars[random(strlen(passchars))] );
     }
-    File pwfile = SPIFFS.open(filename, "w");
-    pwfile.print(password);
-    pwfile.close();
+    store(filename, password);
   }
 
   return password;
 }
 
+String html_entities(String raw) {
+  String r;
+  for (int i = 0; i < raw.length(); i++) {
+    char c = raw.charAt(i);
+    if (c >= '!' && c <= 'z' && c != '&' && c != '<' && c != '>') {
+      // printable ascii minus html and {}
+      r += c;
+    } else {
+      r += Sprintf("&#%d;", raw.charAt(i));
+    }
+  }
+  return r;
+}
+
 void setup_wifi_portal() {
   static WebServer http(80);  
-  String wpa = SPIFFS.open("/wifi-portal-wpa", "r").readString();
+  String wpa = read("/wifi-portal-wpa");
   String ota = pwgen();
 
   if (wpa.length() && ota.length()) {
@@ -127,86 +150,75 @@ void setup_wifi_portal() {
   }
   delay(500);
   setup_ota();
-  uint32_t _ip = WiFi.softAPIP();
-
-  const String myip = Sprintf("%d.%d.%d.%d", (_ip & 0xff), (_ip >> 8 & 0xff), (_ip >> 16 & 0xff), (_ip >> 24));
-  Serial.println(myip);
+  Serial.println(WiFi.softAPIP().toString());
 
   http.on("/", HTTP_GET, []() {
-    String ota = pwgen();
+    String html = "<!DOCTYPE html>\n<meta charset=UTF-8>"
+      "<title>{hostname}</title>"
+      "<form action=/restart method=post>"
+        "Hi, I am {hostname}."
+        "<p>Currently configured SSID: {ssid}<br>"
+        "<input type=submit value=restart>"
+      "</form>"
+      "<hr>"
+      "<h2>Configure</h2>"
+      "<form method=post>"
+        "SSID: <select name=ssid>{options}</select>"
+        "</select><br>Wifi WPA password: <input name=pw value=''><br>"
+        "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
+        "<label><input type=checkbox name=portalpw value=yes{portalwpa}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
+        "<p><label><input type=radio name=retry value=no{retry-no}> Start this wifi configuration portal after wifi connection timeout</label><br>"
+        "<label><input type=radio name=retry value=yes{retry-yes}> Keep trying to connect to wifi (requires flashing firmware to change config)</label><br>"
+        "<p><input type=submit>"
+      "</form>";
 
+    String current = read("/wifi-ssid");
+    
+    html.replace("{hostname}",  my_hostname);
+    html.replace("{ssid}",      current.length() ? html_entities(current) : "(not set)");
+    html.replace("{portalwpa}", read("/wifi-portal-wpa").length() ? " checked" : "");
+    html.replace("{ota}",       html_entities(pwgen()));
+    
+    bool r = read("/wifi-retry").length();
+    html.replace("{retry-yes}", r ? " checked" : "");
+    html.replace("{retry-no}",  r ? "" : " checked");
+    
+    String options;
     int n = WiFi.scanNetworks();
-    String html = "<!DOCTYPE html>\n<meta charset=UTF-8><title>" + my_hostname + "</title>"
-    + "<form action=/restart method=post>Hi, I am " + my_hostname + ".<p>Currently configured SSID: %<br><input type=submit value=restart></form>"
-    + "<hr><h2>Configure</h2><form method=post>SSID: <select name=ssid>";
-    String current = SPIFFS.open("/wifi-ssid", "r").readString();
-    if (current.length()) {
-      current.replace("<", "&lt;");
-      html.replace("%", current);
-    } else {
-      html.replace("%", "(not set)");
-    }    
+    bool found = false;
     for (int i = 0; i< n; i++) {
-      String opt = "<option value='{value}'>{ssid}</option>";
+      String opt = "<option value='{ssid}'{sel}>{ssid} {lock} {1x}</option>";
       String ssid = WiFi.SSID(i);
-      String value = "";
-      for (int j = 0; j < ssid.length(); j++) {
-        // hex encode to get byte-by-byte perfect representation
-        value += Sprintf("&#%d;", ssid.charAt(j));
-      }
-      if (ssid == current) opt.replace("<option", "<option selected");
-      ssid.replace("<", "&lt;");
-      if (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ssid += " &#x1f512;";  // lock symbol
-      if (WiFi.encryptionType(i) == WIFI_AUTH_WPA2_ENTERPRISE) ssid += " (won't work: 802.1x is not supported)";
-      opt.replace("{ssid}", ssid);
-      opt.replace("{value}", value);
-      html += opt;
-    }
-    String retry = SPIFFS.open("/wifi-retry", "r").readString();
-    String portalwpa = SPIFFS.open("/wifi-portal-wpa", "r").readString();
+      wifi_auth_mode_t mode = WiFi.encryptionType(i);
 
-    html += "</select><br>Wifi WPA password: <input name=pw value=><br>"
-      "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
-      "<label><input type=checkbox name=portalpw value=yes{x}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
-      "<p><label><input type=radio name=retry value=no> Start this wifi configuration portal after wifi connection timeout</label><br>"
-      "<label><input type=radio name=retry value=yes> Keep trying to connect to wifi (requires flashing firmware to change config)</label><br>"
-      "<p><input type=submit></form>";
-    html.replace("{x}", portalwpa.length() ? " checked" : "");
-    String otahtml = "";
-    for (int j = 0; j < ota.length(); j++) {
-      // hex encode to get byte-by-byte perfect representation
-      otahtml += Sprintf("&#%d;", ota.charAt(j));
+      opt.replace("{sel}",  ssid == current && !(found++) ? " selected" : "");
+      opt.replace("{ssid}", html_entities(ssid));
+      opt.replace("{lock}", mode != WIFI_AUTH_OPEN ? "&#x1f512;" : "");
+      opt.replace("{1x}",   mode == WIFI_AUTH_WPA2_ENTERPRISE ? "(won't work: 802.1x is not supported)" : "");
+      options += opt;
     }
-    html.replace("{ota}", otahtml);
-    retry = retry.length() ? "=yes" : "=no";
-    html.replace(retry, retry + " checked");
+    html.replace("{options}", options);
     http.send(200, "text/html", html);
   });
+  
   http.on("/", HTTP_POST, []() {
-    File s = SPIFFS.open("/wifi-ssid", "w");
-    s.print(http.arg("ssid"));
-    s.close();
-    File p = SPIFFS.open("/wifi-password", "w");
-    p.print(http.arg("pw"));
-    p.close();
-    File r = SPIFFS.open("/wifi-retry", "w");
-    r.print(http.arg("retry") == "yes" ? "x" : "");
-    r.close();
-    File w = SPIFFS.open("/wifi-portal-wpa", "w");
-    w.print(http.arg("portalpw") == "yes" ? "x" : "");
-    w.close();
-    File o = SPIFFS.open("/ota-password", "w");
-    o.print(http.arg("ota"));
-    o.close();
-    http.send(200, "text/html", "<!DOCTYPE html><meta charset=UTF-8>\n<title>ok</title>Stored, maybe. <a href=/>Go see if it worked</a>");   
-
+    store("/wifi-ssid",       http.arg("ssid"));
+    store("/wifi-password",   http.arg("password"));
+    store("/wifi-retry",      http.arg("retry") == "yes" ? "x" : "");
+    store("/wifi-portal-wpa", http.arg("portalpw") == "yes" ? "x" : "");
+    store("/ota-password",    http.arg("ota"));
+    http.sendHeader("Location", "/");
+    http.send(302, "text/plain", "ok");
   });
+  
   http.on("/restart", HTTP_POST, []() {
     http.send(200, "text/plain", "bye");
     delay(1000);
     ESP.restart();
   });
+  
   http.begin();
+  
   for (;;) {
     bool x = millis() % 1000 < 500;
     all(1, x, !x, .1);
@@ -219,8 +231,8 @@ void setup_wifi_portal() {
 //////// Wifi + mqtt client
 
 void setup_wifi() {
-  String ssid = SPIFFS.open("/wifi-ssid", "r").readString();
-  String pw = SPIFFS.open("/wifi-password", "r").readString();
+  String ssid = read("/wifi-ssid");
+  String pw = read("/wifi-password");
   if (ssid.length() == 0) {
     Serial.println("First contact!\n");
     setup_wifi_portal();
@@ -233,7 +245,7 @@ void setup_wifi() {
 
 void wait_wifi() {
   int attempts = 0;
-  String r = SPIFFS.open("/wifi-retry", "r").readString();
+  String r = read("/wifi-retry");
   bool retry = r.length();
   while (WiFi.status() != WL_CONNECTED) {
     if (attempts++ > 5) {
