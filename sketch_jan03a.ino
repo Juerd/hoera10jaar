@@ -4,10 +4,16 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <esp_task_wdt.h>
+#include <WiFi.h>
+
+
+
+#define Sprintf(f, ...) ({ char* s; asprintf(&s, f, __VA_ARGS__); String r = s; free(s); r; })
 
 const char* ssid = "revspace-pub-2.4ghz";
 const char* password = "";
 const char* mqtt_server = "hoera10jaar.revspace.nl";
+String me = "decennium-";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -80,6 +86,9 @@ void wait_wifi() {
   Serial.printf("\nIP address: %s\n", WiFi.localIP().toString().c_str());
 }
 
+
+
+
 void callback(char* topic, byte* payload, unsigned int length) {
   int lednr = -1;
 
@@ -108,15 +117,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   leds[15 + lednr] = length == 5 || length == 6;   // "green" || "yellow"
 }
 
-
-
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Connecting to MQTT server");
-    String clientId = "hoera10jaar-";
-    clientId += String(random(0xffff), HEX);
 
-    if (client.connect(clientId.c_str())) {
+    if (client.connect(me.c_str())) {
       Serial.println("connected");
       client.subscribe("hoera10jaar/+");
     } else {
@@ -127,7 +132,6 @@ void reconnect() {
   }
 }
 
-
 void setup() {
   for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
   for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
@@ -136,16 +140,20 @@ void setup() {
   
   Serial.begin(115200);
   Serial.println("o hai");
+  me += Sprintf("%12" PRIx64, ESP.getEfuseMac());
+  Serial.println(me);
 
   esp_task_wdt_init(30 /* seconds */, true);
   esp_err_t err = esp_task_wdt_add(NULL);
   Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
 
+  setup_wifi_portal();
+
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);  
 
-  ArduinoOTA.setHostname("millennium");
+  ArduinoOTA.setHostname(me.c_str());
   ArduinoOTA.setPassword(OTA_PASSWORD);
   ArduinoOTA.onStart([]() {
     all(1, true, true);
