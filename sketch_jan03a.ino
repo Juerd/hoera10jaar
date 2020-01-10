@@ -25,6 +25,7 @@ uint8_t col[] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
 int leds[30];
 float brightness = .3;
 
+const int button = 0;
 void matrix() {
   for (int c = 0; c < sizeof(col); c++) {
     for (int r = 0; r < sizeof(row); r++) {
@@ -68,13 +69,14 @@ void all(int ms, bool red, bool green, float b = 1) {
 
 void setup_wifi() {
   String ssid = SPIFFS.open("/wifi-ssid", "r").readString();
-  String pw = SPIFFS.open("/wifi-pw", "r").readString();
+  String pw = SPIFFS.open("/wifi-password", "r").readString();
   if (ssid.length() == 0) {
     Serial.println("First contact!\n");
     setup_wifi_portal();
   }
   Serial.printf("Connecting to %s\n", ssid.c_str());
   WiFi.begin(ssid.c_str(), pw.c_str());
+  setup_ota();
   wait_wifi();
 }
 
@@ -85,7 +87,9 @@ void wait_wifi() {
   while (WiFi.status() != WL_CONNECTED) {
     if (attempts++ > 5) {
       all(500, true, false, .1);
+      check_button();
       all(500, false, false);
+      check_button();
       esp_task_wdt_reset();
     } else {
       delay(100);
@@ -101,21 +105,29 @@ void wait_wifi() {
   Serial.printf("\nIP address: %s\n", WiFi.localIP().toString().c_str());
 }
 
-
-
 void setup_wifi_portal() {
   static WebServer http(80);  
-  WiFi.softAP(me.c_str());
+  String wpa = SPIFFS.open("/wifi-portal-wpa", "r").readString();
+  String ota = pwgen();
+  
+  if (wpa.length() && ota.length()) {
+    WiFi.softAP(me.c_str(), ota.c_str());
+  } else {
+    WiFi.softAP(me.c_str());
+  }
   delay(500);
+  setup_ota();
   uint32_t _ip = WiFi.softAPIP();
   
   const String myip = Sprintf("%d.%d.%d.%d", (_ip & 0xff), (_ip >> 8 & 0xff), (_ip >> 16 & 0xff), (_ip >> 24));
   Serial.println(myip);
   
   http.on("/", HTTP_GET, []() {
+    String ota = pwgen();
+    
     int n = WiFi.scanNetworks();
     String html = "<!DOCTYPE html>\n<meta charset=UTF-8><title>" + me + "</title>"
-    + "<form action=/restart method=post>Currently configured SSID: %<br><input type=submit value=restart></form>"
+    + "<form action=/restart method=post>Hi, I am " + me + ".<p>Currently configured SSID: %<br><input type=submit value=restart></form>"
     + "<hr><h2>Configure</h2><form method=post>SSID: <select name=ssid>";
     String current = SPIFFS.open("/wifi-ssid", "r").readString();
     if (current.length()) {
@@ -139,11 +151,21 @@ void setup_wifi_portal() {
       html += opt;
     }
     String retry = SPIFFS.open("/wifi-retry", "r").readString();
+    String portalwpa = SPIFFS.open("/wifi-portal-wpa", "r").readString();
 
-    html += "</select><br>Password: <input name=pw><br>"
-      "<label><input type=radio name=retry value=no> Start this insecure wifi portal after wifi connection timeout</label><br>"
+    html += "</select><br>Wifi WPA password: <input name=pw value=><br>"
+      "<p>My own OTA/WPA password: <input name=ota value='{ota}' pattern='.{8,}' required> (8+ chars, you may want to save this somewhere, *now*)<br>"
+      "<label><input type=checkbox name=portalpw value=yes{x}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
+      "<p><label><input type=radio name=retry value=no> Start this wifi configuration portal after wifi connection timeout</label><br>"
       "<label><input type=radio name=retry value=yes> Keep trying to connect to wifi (requires flashing firmware to change config)</label><br>"
-      "<input type=submit></form>";
+      "<p><input type=submit></form>";
+    html.replace("{x}", portalwpa.length() ? " checked" : "");
+    String otahtml = "";
+    for (int j = 0; j < ota.length(); j++) {
+      // hex encode to get byte-by-byte perfect representation
+      otahtml += Sprintf("&#%d;", ota.charAt(j));
+    }
+    html.replace("{ota}", otahtml);
     retry = retry.length() ? "=yes" : "=no";
     html.replace(retry, retry + " checked");
     http.send(200, "text/html", html);
@@ -152,12 +174,18 @@ void setup_wifi_portal() {
     File s = SPIFFS.open("/wifi-ssid", "w");
     s.print(http.arg("ssid"));
     s.close();
-    File p = SPIFFS.open("/wifi-pw", "w");
+    File p = SPIFFS.open("/wifi-password", "w");
     p.print(http.arg("pw"));
     p.close();
     File r = SPIFFS.open("/wifi-retry", "w");
     r.print(http.arg("retry") == "yes" ? "x" : "");
     r.close();
+    File w = SPIFFS.open("/wifi-portal-wpa", "w");
+    w.print(http.arg("portalpw") == "yes" ? "x" : "");
+    w.close();
+    File o = SPIFFS.open("/ota-password", "w");
+    o.print(http.arg("ota"));
+    o.close();
     http.send(200, "text/html", "<!DOCTYPE html><meta charset=UTF-8>\n<title>ok</title>Stored, maybe. <a href=/>Go see if it worked</a>");   
 
   });
@@ -169,6 +197,7 @@ void setup_wifi_portal() {
     bool x = millis() % 1000 < 500;
     all(1, x, !x, .1);
     http.handleClient();
+    ArduinoOTA.handle();
     esp_task_wdt_reset();
   }
   
@@ -217,11 +246,41 @@ void reconnect() {
   }
 }
 
+
+String pwgen() {
+  const char* filename   = "/ota-password";
+  const char* passchars  = "ABCEFGHJKLMNPRSTUXYZabcdefhkmnorstvxz23456789-#@%^<>";
+  
+  File pwfile = SPIFFS.open(filename, "r");
+  String password = pwfile.readString();
+  pwfile.close();
+
+  if (password.length() == 0) {
+    for (int i = 0; i < 16; i++) {
+       password.concat( passchars[random(strlen(passchars))] );
+    }
+    File pwfile = SPIFFS.open(filename, "w");
+    pwfile.print(password);
+    pwfile.close();
+  }
+  
+  return password;
+}
+
+void check_button() {
+  if (digitalRead(button) == HIGH) return;
+  unsigned long target = millis() + 1000;
+  while (digitalRead(button) == LOW) {
+    if (millis() > target) setup_wifi_portal();
+  }
+}
+
 void setup() {
   for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
   for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
   all(50, false, true, .1);
   all(0, false, false, .1);
+  pinMode(button, INPUT);
   
   Serial.begin(115200);
   Serial.println("o hai");
@@ -233,12 +292,19 @@ void setup() {
   Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
 
   SPIFFS.begin(true);
+
   setup_wifi();
   client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);  
+  client.setCallback(callback);
+}
 
+void setup_ota() {
+  
+  String ota = pwgen();
+  Serial.printf("OTA password is %s\n", ota.c_str());
+  
   ArduinoOTA.setHostname(me.c_str());
-  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA.setPassword(ota.c_str());
   ArduinoOTA.onStart([]() {
     all(1, true, true);
   });
@@ -259,7 +325,6 @@ void setup() {
   });
   
   ArduinoOTA.begin();
-  
 }
 
 void loop() {
@@ -280,4 +345,5 @@ void loop() {
 
   ArduinoOTA.handle();
   esp_task_wdt_reset();
+  check_button();
 }
