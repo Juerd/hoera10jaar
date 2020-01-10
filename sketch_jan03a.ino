@@ -125,11 +125,17 @@ void setup_wifi_portal() {
       html.replace("%", "(not set)");
     }    
     for (int i = 0; i< n; i++) {
-      String opt = "<option>%</option>";
+      String opt = "<option value='{value}'>{ssid}</option>";
       String ssid = WiFi.SSID(i);
-      if (ssid == current) opt.replace(">", " selected>");
+      String value = "";
+      for (int j = 0; j < ssid.length(); j++) {
+        // hex encode to get byte-by-byte perfect representation
+        value += Sprintf("&#%d;", ssid.charAt(j));
+      }
+      if (ssid == current) opt.replace("<option", "<option selected");
       ssid.replace("<", "&lt;");
-      opt.replace("%", ssid);
+      opt.replace("{ssid}", ssid);
+      opt.replace("{value}", value);
       html += opt;
     }
     String retry = SPIFFS.open("/wifi-retry", "r").readString();
