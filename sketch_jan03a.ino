@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
-#define OTA_PASSWORD "bla"
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <esp_task_wdt.h>
@@ -9,7 +8,6 @@
 #include <HTTP_Method.h>
 
 #include <SPIFFS.h>
-
 
 #define Sprintf(f, ...) ({ char* s; asprintf(&s, f, __VA_ARGS__); String r = s; free(s); r; })
 
@@ -146,6 +144,8 @@ void setup_wifi_portal() {
       }
       if (ssid == current) opt.replace("<option", "<option selected");
       ssid.replace("<", "&lt;");
+      if (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ssid += " &#x1f512;";  // lock symbol
+      if (WiFi.encryptionType(i) == WIFI_AUTH_WPA2_ENTERPRISE) ssid += " (won't work: 802.1x is not supported)";
       opt.replace("{ssid}", ssid);
       opt.replace("{value}", value);
       html += opt;
@@ -154,7 +154,7 @@ void setup_wifi_portal() {
     String portalwpa = SPIFFS.open("/wifi-portal-wpa", "r").readString();
 
     html += "</select><br>Wifi WPA password: <input name=pw value=><br>"
-      "<p>My own OTA/WPA password: <input name=ota value='{ota}' pattern='.{8,}' required> (8+ chars, you may want to save this somewhere, *now*)<br>"
+      "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
       "<label><input type=checkbox name=portalpw value=yes{x}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
       "<p><label><input type=radio name=retry value=no> Start this wifi configuration portal after wifi connection timeout</label><br>"
       "<label><input type=radio name=retry value=yes> Keep trying to connect to wifi (requires flashing firmware to change config)</label><br>"
@@ -190,6 +190,8 @@ void setup_wifi_portal() {
 
   });
   http.on("/restart", HTTP_POST, []() {
+    http.send(200, "text/plain", "bye");
+    delay(1000);
     ESP.restart();
   });
   http.begin();
