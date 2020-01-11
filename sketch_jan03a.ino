@@ -142,6 +142,7 @@ String html_entities(String raw) {
 void setup_wifi_portal() {
   static WebServer http(80);
   static DNSServer dns;
+  static int num_networks = -1;
   String wpa = read("/wifi-portal-wpa");
   String ota = pwgen();
   
@@ -167,7 +168,7 @@ void setup_wifi_portal() {
       "<hr>"
       "<h2>Configure</h2>"
       "<form method=post>"
-        "SSID: <select name=ssid>{options}</select>"
+        "SSID: <select name=ssid>{options}</select> <a href=/rescan>rescan</a>"
         "</select><br>Wifi WPA password: <input name=pw value=''><br>"
         "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
         "<label><input type=checkbox name=portalpw value=yes{portalwpa}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
@@ -188,9 +189,9 @@ void setup_wifi_portal() {
     html.replace("{retry-no}",  r ? "" : " checked");
     
     String options;
-    int n = WiFi.scanNetworks();
+    if (num_networks < 0) num_networks = WiFi.scanNetworks();
     bool found = false;
-    for (int i = 0; i< n; i++) {
+    for (int i = 0; i < num_networks; i++) {
       String opt = "<option value='{ssid}'{sel}>{ssid} {lock} {1x}</option>";
       String ssid = WiFi.SSID(i);
       wifi_auth_mode_t mode = WiFi.encryptionType(i);
@@ -219,6 +220,12 @@ void setup_wifi_portal() {
     http.send(200, "text/plain", "bye");
     delay(1000);
     ESP.restart();
+  });
+
+  http.on("/rescan", HTTP_GET, []() {
+    http.sendHeader("Location", "/");
+    http.send(302, "text/plain", "wait for it...");
+    num_networks = WiFi.scanNetworks();
   });
 
   http.onNotFound([]() {
