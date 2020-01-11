@@ -146,12 +146,15 @@ void setup_wifi_portal() {
   static int num_networks = -1;
   String wpa = read("/wifi-portal-wpa");
   String ota = pwgen();
-  
+
+  WiFi.disconnect();
+
   if (wpa.length() && ota.length()) {
     WiFi.softAP(my_hostname.c_str(), ota.c_str());
   } else {
     WiFi.softAP(my_hostname.c_str());
   }
+  delay(500);
   dns.setTTL(0);
   dns.start(53, "*", WiFi.softAPIP());
   setup_ota();
@@ -169,8 +172,9 @@ void setup_wifi_portal() {
       "<hr>"
       "<h2>Configure</h2>"
       "<form method=post>"
-        "SSID: <select name=ssid>{options}</select> <a href=/rescan>rescan</a>"
-        "</select><br>Wifi WPA password: <input name=pw value=''><br>"
+        "SSID: <select name=ssid onchange=\"document.getElementsByName('password')[0].value=''\">{options}</select> "
+        "<a href=/rescan onclick=\"this.innerHTML='scanning...';\">rescan</a>"
+        "</select><br>Wifi WEP/WPA password: <input name=password value='{password}'><br>"
         "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
         "<label><input type=checkbox name=portalpw value=yes{portalwpa}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
         "<p><label><input type=radio name=retry value=no{retry-no}> Start this wifi configuration portal after wifi connection timeout</label><br>"
@@ -179,6 +183,7 @@ void setup_wifi_portal() {
       "</form>";
 
     String current = read("/wifi-ssid");
+    String pw = read("/wifi-password");
     
     html.replace("{hostname}",  my_hostname);
     html.replace("{ssid}",      current.length() ? html_entities(current) : "(not set)");
@@ -203,16 +208,19 @@ void setup_wifi_portal() {
       opt.replace("{1x}",   mode == WIFI_AUTH_WPA2_ENTERPRISE ? "(won't work: 802.1x is not supported)" : "");
       options += opt;
     }
-    html.replace("{options}", options);
+    html.replace("{password}", found && pw.length() ? "##**##**##**" : "");
+    html.replace("{options}",  options);
     http.send(200, "text/html", html);
   });
   
   http.on("/", HTTP_POST, []() {
-    store("/wifi-ssid",       http.arg("ssid"));
-    store("/wifi-password",   http.arg("password"));
-    store("/wifi-retry",      http.arg("retry") == "yes" ? "x" : "");
-    store("/wifi-portal-wpa", http.arg("portalpw") == "yes" ? "x" : "");
-    store("/ota-password",    http.arg("ota"));
+    String pw = http.arg("password");
+    if (pw != "##**##**##**")
+        store("/wifi-password", pw);
+    store("/wifi-ssid",         http.arg("ssid"));
+    store("/wifi-retry",        http.arg("retry") == "yes" ? "x" : "");
+    store("/wifi-portal-wpa",   http.arg("portalpw") == "yes" ? "x" : "");
+    store("/ota-password",      http.arg("ota"));
     http.sendHeader("Location", "/");
     http.send(302, "text/plain", "ok");
   });
