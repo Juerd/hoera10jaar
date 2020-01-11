@@ -65,15 +65,16 @@ void setup_ota() {
   ArduinoOTA.setHostname(my_hostname.c_str());
   ArduinoOTA.setPassword(ota.c_str());
   ArduinoOTA.onStart([]() {
-    all(1, true, true);
+    all(1, true, false);
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     float p = (float) progress / total;
     float maxled = p * 30.0;
+    if (maxled >= 14.5 && maxled < 15.0) all(0, false, true);
     for (int i = 0; i < maxled; i++) {
       leds[i] = 0;
     }
-    matrixdelay(2);
+    matrixdelay(3);
     esp_task_wdt_reset();
   });
   ArduinoOTA.onError([](ota_error_t error) {
