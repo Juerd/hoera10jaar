@@ -237,8 +237,9 @@ void setup_wifi_portal() {
   http.begin();
   
   for (;;) {
-    bool x = millis() % 1000 < 500;
-    all(1, x, !x, .1);
+    bool x = millis() % 1000 < 333;
+    bool y = millis() % 1000 > 666;
+    all(1, x || !y, y || !x, .1);
     http.handleClient();
     dns.processNextRequest();
     ArduinoOTA.handle();
@@ -348,7 +349,7 @@ void reconnect_mqtt() {
 void setup() {
   for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
   for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
-  all(50, false, true, .1);
+  all(50, true, true, .1);
   all(0, false, false, .1);
   pinMode(button, INPUT);
 
