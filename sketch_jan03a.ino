@@ -4,6 +4,7 @@
 #include <SPIFFS.h>
 #include <PubSubClient.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <HTTP_Method.h>
 #include <esp_task_wdt.h>
 
@@ -139,17 +140,20 @@ String html_entities(String raw) {
 }
 
 void setup_wifi_portal() {
-  static WebServer http(80);  
+  static WebServer http(80);
+  static DNSServer dns;
   String wpa = read("/wifi-portal-wpa");
   String ota = pwgen();
-
+  
   if (wpa.length() && ota.length()) {
     WiFi.softAP(my_hostname.c_str(), ota.c_str());
   } else {
     WiFi.softAP(my_hostname.c_str());
   }
-  delay(500);
+  dns.setTTL(0);
+  dns.start(53, "*", WiFi.softAPIP());
   setup_ota();
+
   Serial.println(WiFi.softAPIP().toString());
 
   http.on("/", HTTP_GET, []() {
@@ -216,6 +220,11 @@ void setup_wifi_portal() {
     delay(1000);
     ESP.restart();
   });
+
+  http.onNotFound([]() {
+    http.sendHeader("Location", "http://" + my_hostname + "/");
+    http.send(302, "text/plain", "hi");
+  });
   
   http.begin();
   
@@ -223,6 +232,7 @@ void setup_wifi_portal() {
     bool x = millis() % 1000 < 500;
     all(1, x, !x, .1);
     http.handleClient();
+    dns.processNextRequest();
     ArduinoOTA.handle();
     esp_task_wdt_reset();
   }
