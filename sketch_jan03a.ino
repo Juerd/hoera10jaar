@@ -34,11 +34,7 @@ void matrix() {
     digitalWrite(col[c], any);
     delayMicroseconds(c >= 3 ? brightness*5 : brightness*10);
     digitalWrite(col[c], LOW);
-    if (brightness < 0.2) {
-      delayMicroseconds((.2 - brightness) * (c >= 3 ? 500 : 250));
-    } else {
-      delayMicroseconds(c >= 3 ? 10 : 5);
-    }
+    delayMicroseconds(c >= 3 ? 30 : 50);
   }
 }
 
@@ -52,7 +48,8 @@ void all(int ms, bool red, bool green, float b = 1) {
   brightness = b;
   for (int i = 0; i < 15; i++) leds[i] = red;
   for (int i = 15; i < 30; i++) leds[i] = green;
-  matrixdelay(ms);
+  //matrixdelay(ms);
+  delay(ms);
   brightness = oldb;
 }
 
@@ -74,7 +71,6 @@ void setup_ota() {
     for (int i = 0; i < maxled; i++) {
       leds[i] = 0;
     }
-    matrixdelay(3);
     esp_task_wdt_reset();
   });
   ArduinoOTA.onError([](ota_error_t error) {
@@ -325,7 +321,7 @@ void callback(char* topic, byte* message, unsigned int length) {
   } else if (strncmp(m, "green", length) == 0) {
     leds[lednr]      = 0;
     leds[lednr + 15] = 1;
-  } else if (!length) {
+  } else if (length <= 1) {
     leds[lednr]      = 0;
     leds[lednr + 15] = 0;
   } else {  // "yellow" waarschijnlijk
@@ -366,27 +362,46 @@ void setup() {
   my_hostname += Sprintf("%12" PRIx64, ESP.getEfuseMac());
   Serial.println(my_hostname);
 
-  esp_task_wdt_init(30 /* seconds */, true);
-  esp_err_t err = esp_task_wdt_add(NULL);
-  Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
 
   SPIFFS.begin(true);
 
-  setup_wifi();
-  mqtt.setServer(mqtt_server, 1883);
-  mqtt.setCallback(callback);
+  xTaskCreatePinnedToCore(
+    network,      /* Function to implement the task */
+    "network",    /* Name of the task */
+    4096,         /* Stack size in words */
+    NULL,         /* Task input parameter */
+    3,            /* Priority of the task */
+    NULL,         /* Task handle. */
+    0             /* Core where the task should run */
+  );
 }
 
 
 void loop() {
-  if (!mqtt.connected()) reconnect_mqtt();
-
-  // Traag, dus niet te vaak doen ivm matrix refresh rate
-  static unsigned int i = 0;
-  if (i++ % 40 == 0) mqtt.loop();
-
   matrix();
-  ArduinoOTA.handle();
-  esp_task_wdt_reset();
-  check_button();
+}
+
+void network(void * pvParameters) {
+  esp_task_wdt_init(30 /* seconds */, true);
+  esp_err_t err = esp_task_wdt_add(NULL);
+
+  Serial.println(String("core0 loop ") + xPortGetCoreID());
+  Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
+
+  setup_wifi();
+  mqtt.setServer(mqtt_server, 1883);
+  mqtt.setCallback(callback);
+
+  while (1) {
+    if (!mqtt.connected()) reconnect_mqtt();
+
+    // Traag, dus niet te vaak doen ivm matrix refresh rate
+    static unsigned int i = 0;
+    if (i++ % 40 == 0) mqtt.loop();
+
+    ArduinoOTA.handle();
+    esp_task_wdt_reset();
+    check_button();
+    delay(1);
+  }
 }
