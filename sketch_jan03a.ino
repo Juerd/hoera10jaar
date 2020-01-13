@@ -16,7 +16,16 @@ const byte   row[] = { 27, 26, 32, 33, 25 };  // +
 const byte   col[] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
 const int    button = 0;
 int          leds[30];
-float        brightness = .3;
+int          current[30];
+//float        brightness = .3;
+const int    OFF = 0;
+const int    ON_R = 84;
+const int    ON_G = 64;
+const int    ON_YR = 84;
+const int    ON_YG = 30;
+int          fade_interval = 5;
+int          waitstep = 10;
+int          wait = -14 * waitstep;
 
 WiFiClient   espClient;
 PubSubClient mqtt(espClient);
@@ -24,33 +33,50 @@ PubSubClient mqtt(espClient);
 //////// LED matrix
 
 void matrix() {
-  for (int c = 0; c < sizeof(col); c++) {
-    bool any = false;
-    for (int r = 0; r < sizeof(row); r++) {
-      bool on = leds[c * 5 + r];
-      if (on) any = true;
-      digitalWrite(row[r], on);
+  for (int s = 0; s < 256; s += 8) {
+    for (int c = 0; c < sizeof(col); c++) {
+      bool any = false;
+      for (int r = 0; r < sizeof(row); r++) {
+        bool on = current[c * 5 + r] > s;
+        if (on) any = true;
+        digitalWrite(row[r], on);
+      }
+      digitalWrite(col[c], any);
+      delayMicroseconds(0);
+      digitalWrite(col[c], LOW);
     }
-    digitalWrite(col[c], any);
-    delayMicroseconds(c >= 3 ? brightness*5 : brightness*10);
-    digitalWrite(col[c], LOW);
-    delayMicroseconds(c >= 3 ? 30 : 50);
+    delayMicroseconds(1);
   }
 }
 
-void matrixdelay(int ms) {
-  unsigned long end = millis() + ms;
-  while(millis() < end) matrix();
+void all(int ms, bool red, bool green) {
+  unsigned long start = millis();
+  for (int i =  0; i < 15; i++) leds[i] = red * (green ? ON_YR : ON_R);
+  for (int i = 15; i < 30; i++) leds[i] = green * (red ? ON_YG : ON_G);
+  if (ms) {
+    wait_fade();
+    while (millis() - start < ms) delay(1);
+  }
 }
 
-void all(int ms, bool red, bool green, float b = 1) {
-  float oldb = brightness;
-  brightness = b;
-  for (int i = 0; i < 15; i++) leds[i] = red;
-  for (int i = 15; i < 30; i++) leds[i] = green;
-  //matrixdelay(ms);
-  delay(ms);
-  brightness = oldb;
+bool fade() {
+  static unsigned long previous = 0;
+  if (!previous || (millis() - previous > fade_interval)) {
+    previous = millis();
+  } else {
+    return true;
+  }
+
+  bool faded = false;
+  for (int i = 0; i < 30; i++) {
+    if (leds[i] > current[i]) { current[i]++; faded = true; }
+    else if (leds[i] < current[i]) { current[i]--; faded = true; }
+  }
+  return faded;
+}
+
+void wait_fade() {
+  while (fade());
 }
 
 //////// Over-The-Air update
@@ -62,22 +88,24 @@ void setup_ota() {
   ArduinoOTA.setHostname(my_hostname.c_str());
   ArduinoOTA.setPassword(ota.c_str());
   ArduinoOTA.onStart([]() {
-    all(1, true, false);
+    fade_interval = 1;
+    all(0, true, false);
+    wait_fade();
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     float p = (float) progress / total;
     float maxled = p * 30.0;
-    if (maxled >= 14.5 && maxled < 15.0) all(0, false, true);
-    for (int i = 0; i < maxled; i++) {
-      leds[i] = 0;
-    }
+    if (maxled >= 14.5 && maxled < 15.0) { all(0, false, true); wait_fade(); }
+    for (int i = 0; i < maxled; i++) current[i] = leds[i] = 0;
     esp_task_wdt_reset();
   });
   ArduinoOTA.onError([](ota_error_t error) {
     all(5000, true, false);
+    all(1, false, false);
   });
   ArduinoOTA.onEnd([]() {
     all(2000, false, true);
+    all(1, false, false);
   });
 
   ArduinoOTA.begin();
@@ -85,9 +113,9 @@ void setup_ota() {
 
 void check_button() {
   if (digitalRead(button) == HIGH) return;
-  unsigned long target = millis() + 1000;
+  unsigned long start = millis();
   while (digitalRead(button) == LOW) {
-    if (millis() > target) setup_wifi_portal();
+    if (millis() - start > 1000) setup_wifi_portal();
   }
 }
 
@@ -223,7 +251,7 @@ void setup_wifi_portal() {
   
   http.on("/restart", HTTP_POST, []() {
     http.send(200, "text/plain", "bye");
-    delay(1000);
+    all(1000, false, false);
     ESP.restart();
   });
 
@@ -239,15 +267,20 @@ void setup_wifi_portal() {
   });
   
   http.begin();
-  
+ 
+  fade_interval = 3;
   for (;;) {
-    bool x = millis() % 1000 < 333;
-    bool y = millis() % 1000 > 666;
-    all(1, x || !y, y || !x, .1);
+    unsigned long m = millis();
+    if (m % 1000 < 20) {
+      bool x = m % 2000 < 1000;
+      all(0, x, !x);
+    }
+    fade();
     http.handleClient();
     dns.processNextRequest();
     ArduinoOTA.handle();
     esp_task_wdt_reset();
+    vTaskDelay(1);
   }
 }
 
@@ -270,15 +303,19 @@ void wait_wifi() {
   int attempts = 0;
   String r = read("/wifi-retry");
   bool retry = r.length();
+  bool do_yay = false;
   while (WiFi.status() != WL_CONNECTED) {
-    if (attempts++ > 5) {
-      all(500, true, false, .1);
+    if (attempts++ > 2) {
+      do_yay = true;
+      all(500, true, false);
       check_button();
       all(500, false, false);
       check_button();
       esp_task_wdt_reset();
+      vTaskDelay(1);
     } else {
-      delay(100);
+      delay(1000);
+      check_button();
     }
     if (attempts > 30 && !retry) {
       Serial.println("Giving up. Starting config portal.");
@@ -287,6 +324,10 @@ void wait_wifi() {
     Serial.println(attempts);
   }
 
+  if (do_yay) {
+    all(1, false, true);
+    all(1, false, false);
+  }
   randomSeed(micros());  // ?
   Serial.printf("\nIP address: %s\n", WiFi.localIP().toString().c_str());
 }
@@ -313,21 +354,25 @@ void callback(char* topic, byte* message, unsigned int length) {
   else if (t == "heerlen")    lednr = 14;
   
   if (lednr == -1) return;
+  int minus = 0;
+  if (!leds[lednr] && !leds[lednr+15] && wait < 0) { minus = wait; wait += waitstep; }
 
   char* m = (char*) message;
   if (strncmp(m, "red", length) == 0) {
-    leds[lednr]      = 1;
-    leds[lednr + 15] = 0;
+    leds[lednr]      = ON_R;
+    leds[lednr + 15] = OFF;
   } else if (strncmp(m, "green", length) == 0) {
-    leds[lednr]      = 0;
-    leds[lednr + 15] = 1;
+    leds[lednr]      = OFF;
+    leds[lednr + 15] = ON_G;
   } else if (length <= 1) {
-    leds[lednr]      = 0;
-    leds[lednr + 15] = 0;
+    leds[lednr]      = OFF;
+    leds[lednr + 15] = OFF;
   } else {  // "yellow" waarschijnlijk
-    leds[lednr]      = 1;
-    leds[lednr + 15] = 1;
+    leds[lednr]      = ON_YR;
+    leds[lednr + 15] = ON_YG;
   }
+  current[lednr] += minus;
+  current[lednr + 15] += minus;
 }
 
 void reconnect_mqtt() {
@@ -343,7 +388,8 @@ void reconnect_mqtt() {
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqtt.state());
-      all(5000, true, true, .1);
+      all(5000, true, true);
+      all(1, false, false);
     }
   }
 }
@@ -353,8 +399,6 @@ void reconnect_mqtt() {
 void setup() {
   for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
   for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
-  all(50, true, true, .1);
-  all(0, false, false, .1);
   pinMode(button, INPUT);
 
   Serial.begin(115200);
@@ -394,14 +438,13 @@ void network(void * pvParameters) {
 
   while (1) {
     if (!mqtt.connected()) reconnect_mqtt();
+    fade();
 
-    // Traag, dus niet te vaak doen ivm matrix refresh rate
-    static unsigned int i = 0;
-    if (i++ % 40 == 0) mqtt.loop();
-
+    mqtt.loop();
     ArduinoOTA.handle();
-    esp_task_wdt_reset();
     check_button();
-    delay(1);
+
+    esp_task_wdt_reset();
+    vTaskDelay(1);
   }
 }
