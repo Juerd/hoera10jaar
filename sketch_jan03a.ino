@@ -12,11 +12,14 @@
 
 const char*  mqtt_server = "hoera10jaar.revspace.nl";
 String       my_hostname = "decennium-";
-const byte   row[] = { 27, 26, 32, 33, 25 };  // +
-const byte   col[] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
+const int    numrows = 5;
+const int    numcols = 6;
+const int    rows[numrows] = { 27, 26, 32, 33, 25 };  // +
+const int    cols[numcols] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
 const int    button = 0;
-int          leds[30];
-int          current[30];
+const int    numleds = 30;
+int          leds[numleds];
+int          current[numleds];
 //float        brightness = .3;
 const int    OFF = 0;
 const int    ON_R = 84;
@@ -32,20 +35,27 @@ PubSubClient mqtt(espClient);
 
 //////// LED matrix
 
-void matrix() {
-  for (int s = 0; s < 256; s += 8) {
-    for (int c = 0; c < sizeof(col); c++) {
-      bool any = false;
-      for (int r = 0; r < sizeof(row); r++) {
-        bool on = current[c * 5 + r] > s;
-        if (on) any = true;
-        digitalWrite(row[r], on);
+void loop() {  // Pinned to core 1, nothing else is.
+  for (;;) {  // Never hand back control
+    //static int x = 0;
+    //unsigned long start = micros();
+    for (int s = 0; s < 256; s += 8) {
+      // int is faster than uint_fast8_t?!
+      for (int c = 0; c < numcols; c++) {
+        bool any = false;
+        for (int r = 0; r < numrows; r++) {
+            bool on = current[c * 5 + r] > s;
+            if (on) any = true;
+            digitalWrite(rows[r], on);
+        }
+        digitalWrite(cols[c], any);
+        ets_delay_us(1);  // faster than delayMicros()
+        digitalWrite(cols[c], LOW);
       }
-      digitalWrite(col[c], any);
-      delayMicroseconds(0);
-      digitalWrite(col[c], LOW);
+      ets_delay_us(2);
     }
-    delayMicroseconds(1);
+    esp_task_wdt_reset();
+    //if (x++ % 10000 == 0) Serial.println(micros() - start);
   }
 }
 
@@ -397,17 +407,14 @@ void reconnect_mqtt() {
 //////// Main
 
 void setup() {
-  for (int r = 0; r < sizeof(row); r++) pinMode(row[r], OUTPUT);  
-  for (int c = 0; c < sizeof(col); c++) pinMode(col[c], OUTPUT);
+  for (int r = 0; r < numrows; r++) pinMode(rows[r], OUTPUT);  
+  for (int c = 0; c < numcols; c++) pinMode(cols[c], OUTPUT);
   pinMode(button, INPUT);
 
   Serial.begin(115200);
   Serial.println("o hai");
   my_hostname += Sprintf("%12" PRIx64, ESP.getEfuseMac());
   Serial.println(my_hostname);
-
-
-  SPIFFS.begin(true);
 
   xTaskCreatePinnedToCore(
     network,      /* Function to implement the task */
@@ -420,11 +427,6 @@ void setup() {
   );
 }
 
-
-void loop() {
-  matrix();
-}
-
 void network(void * pvParameters) {
   esp_task_wdt_init(30 /* seconds */, true);
   esp_err_t err = esp_task_wdt_add(NULL);
@@ -432,6 +434,7 @@ void network(void * pvParameters) {
   Serial.println(String("core0 loop ") + xPortGetCoreID());
   Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
 
+  SPIFFS.begin(true);
   setup_wifi();
   mqtt.setServer(mqtt_server, 1883);
   mqtt.setCallback(callback);
