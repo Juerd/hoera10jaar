@@ -277,7 +277,7 @@ void setup_wifi_portal() {
       opt.replace("{sel}",  ssid == current && !(found++) ? " selected" : "");
       opt.replace("{ssid}", html_entities(ssid));
       opt.replace("{lock}", mode != WIFI_AUTH_OPEN ? "&#x1f512;" : "");
-      opt.replace("{1x}",   mode == WIFI_AUTH_WPA2_ENTERPRISE ? "(won't work: 802.1x is not supported)" : "");
+      opt.replace("{1x}",   mode == WIFI_AUTH_WPA2_ENTERPRISE ? "(werkt niet: 802.1x wordt niet ondersteund)" : "");
       options += opt;
     }
     html.replace("{password}", found && pw.length() ? "##**##**##**" : "");
