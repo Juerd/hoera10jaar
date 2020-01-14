@@ -51,7 +51,6 @@ void loop() {  // Pinned to core 1, nothing else is.
         ets_delay_us(1);  // more stable than delayMicros()
         digitalWrite(cols[c], LOW);
       }
-      ets_delay_us(2);
     }
     esp_task_wdt_reset();
     //if (x++ % 10000 == 0) Serial.println(micros() - start);
