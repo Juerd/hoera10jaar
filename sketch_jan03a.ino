@@ -59,17 +59,17 @@ PubSubClient mqtt(espClient);
 //////// LED matrix
 
 void loop() {  // Pinned to core 1, nothing else is.
-  // optimized to run in ~340 us; was ~900us before optimizations
+  static int levels[] = {192,40,224,8,24,152,128,104,184,16,88,216,208,240,176,232,200,32,160,72,248,80,56,112,136,0,48,144,168,64,96,120};  // ((0..31) »*» 8).pick(*).join(",")
 
   for (;;) {  // Never hand back control
-    //static int x = 0;
-    //unsigned long start = micros();
+    static int x = 0;
+    unsigned long start = micros();
     // int is faster than uint_fast8_t?!
-    for (int s = 0; s < 256; s += 8) {
+    for (int s = 0; s < 32; s++) {
       for (int c = 0; c < numcols; c++) {
         bool any = false;
         for (int r = numrows - 1; r >= 0; r--) {
-            bool on = current[c * 5 + r] > s;
+            bool on = current[c * 5 + r] > levels[s];
 
             // digitalWrite(rows[r], on) unrolled:
             if (on) {
@@ -84,13 +84,13 @@ void loop() {  // Pinned to core 1, nothing else is.
         if (any) GPIO.out_w1ts = colgpio[c];  // digitalWrite(cols[c], HIGH);
         else     GPIO.out_w1tc = colgpio[c];  // digitalWrite(cols[c], LOW);
 
-        ets_delay_us(1);  // more stable than delayMicros()
+        ets_delay_us(2);  // more stable than delayMicros()
         GPIO.out_w1tc = colgpio[c];  // digitalWrite(cols[c], LOW);
         //ets_delay_us(1);
       }
     }
     esp_task_wdt_reset();
-    //if (x++ % 10000 == 0) Serial.println(micros() - start);
+    if (x++ % 10000 == 0) Serial.println(micros() - start);
   }
 }
 
