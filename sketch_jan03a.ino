@@ -449,7 +449,7 @@ void setup() {
   pinMode(button, INPUT);
 
   Serial.begin(115200);
-  Serial.println("c hai");
+  Serial.println("o hai");
   my_hostname += Sprintf("%12" PRIx64, ESP.getEfuseMac());
   Serial.println(my_hostname);
 
