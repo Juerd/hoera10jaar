@@ -20,7 +20,6 @@ const int    button = 0;
 const int    numleds = 30;
 int          leds[numleds];
 int          current[numleds];
-//float        brightness = .3;
 const int    OFF = 0;
 const int    ON_R = 84;
 const int    ON_G = 64;
@@ -39,9 +38,9 @@ void loop() {  // Pinned to core 1, nothing else is.
   for (;;) {  // Never hand back control
     //static int x = 0;
     //unsigned long start = micros();
-    for (int s = 0; s < 256; s += 8) {
       // int is faster than uint_fast8_t?!
-      for (int c = 0; c < numcols; c++) {
+    for (int c = 0; c < numcols; c++) {
+      for (int s = 0; s < 256; s += 8) {
         bool any = false;
         for (int r = 0; r < numrows; r++) {
             bool on = current[c * 5 + r] > s;
@@ -49,10 +48,10 @@ void loop() {  // Pinned to core 1, nothing else is.
             digitalWrite(rows[r], on);
         }
         digitalWrite(cols[c], any);
-        ets_delay_us(1);  // faster than delayMicros()
+        ets_delay_us(1);  // more stable than delayMicros()
         digitalWrite(cols[c], LOW);
+        ets_delay_us(1);
       }
-      ets_delay_us(2);
     }
     esp_task_wdt_reset();
     //if (x++ % 10000 == 0) Serial.println(micros() - start);
