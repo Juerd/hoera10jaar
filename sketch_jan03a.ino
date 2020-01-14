@@ -39,10 +39,10 @@ void loop() {  // Pinned to core 1, nothing else is.
     //static int x = 0;
     //unsigned long start = micros();
       // int is faster than uint_fast8_t?!
-    for (int c = 0; c < numcols; c++) {
-      for (int s = 0; s < 256; s += 8) {
+    for (int s = 0; s < 256; s += 8) {
+      for (int c = 0; c < numcols; c++) {
         bool any = false;
-        for (int r = 0; r < numrows; r++) {
+        for (int r = numrows - 1; r >= 0; r--) {
             bool on = current[c * 5 + r] > s;
             if (on) any = true;
             digitalWrite(rows[r], on);
@@ -50,8 +50,8 @@ void loop() {  // Pinned to core 1, nothing else is.
         digitalWrite(cols[c], any);
         ets_delay_us(1);  // more stable than delayMicros()
         digitalWrite(cols[c], LOW);
-        ets_delay_us(1);
       }
+      ets_delay_us(2);
     }
     esp_task_wdt_reset();
     //if (x++ % 10000 == 0) Serial.println(micros() - start);
