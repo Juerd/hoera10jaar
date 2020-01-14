@@ -16,6 +16,7 @@ const int    numrows = 5;
 const int    numcols = 6;
 const int    rows[numrows] = { 27, 26, 32, 33, 25 };  // +
 const int    cols[numcols] = { /* rood */ 4, 17, 18, /* groen */ 16, 5, 19 };  // n fet
+
 const int    button = 0;
 const int    numleds = 30;
 int          leds[numleds];
@@ -29,27 +30,63 @@ int          fade_interval = 5;
 int          waitstep = 10;
 int          wait = -14 * waitstep;
 
+const uint32_t     colgpio[numcols] = {  // calculate at compile time
+    (uint32_t)1 << cols[0],
+    (uint32_t)1 << cols[1],
+    (uint32_t)1 << cols[2],
+    (uint32_t)1 << cols[3],
+    (uint32_t)1 << cols[4],
+    (uint32_t)1 << cols[5]
+};
+const uint32_t     rowgpio[numcols] = {
+    rows[0] < 32 ? ((uint32_t)1 << rows[0]) : ((uint32_t)1 << (rows[0] - 32)),
+    rows[1] < 32 ? ((uint32_t)1 << rows[1]) : ((uint32_t)1 << (rows[1] - 32)),
+    rows[2] < 32 ? ((uint32_t)1 << rows[2]) : ((uint32_t)1 << (rows[2] - 32)),
+    rows[3] < 32 ? ((uint32_t)1 << rows[3]) : ((uint32_t)1 << (rows[3] - 32)),
+    rows[4] < 32 ? ((uint32_t)1 << rows[4]) : ((uint32_t)1 << (rows[4] - 32)),
+};
+const int          rowregister[numcols] = {
+    rows[0] >= 32,
+    rows[1] >= 32,
+    rows[2] >= 32,
+    rows[3] >= 32,
+    rows[4] >= 32,
+};
+
 WiFiClient   espClient;
 PubSubClient mqtt(espClient);
 
 //////// LED matrix
 
 void loop() {  // Pinned to core 1, nothing else is.
+  // optimized to run in ~340 us; was ~900us before optimizations
+
   for (;;) {  // Never hand back control
     //static int x = 0;
     //unsigned long start = micros();
-      // int is faster than uint_fast8_t?!
+    // int is faster than uint_fast8_t?!
     for (int s = 0; s < 256; s += 8) {
       for (int c = 0; c < numcols; c++) {
         bool any = false;
         for (int r = numrows - 1; r >= 0; r--) {
             bool on = current[c * 5 + r] > s;
-            if (on) any = true;
-            digitalWrite(rows[r], on);
+
+            // digitalWrite(rows[r], on) unrolled:
+            if (on) {
+                any = true;
+                if (rowregister[r]) GPIO.out1_w1ts.val = rowgpio[r];
+                else                GPIO.out_w1ts      = rowgpio[r];
+            } else {
+                if (rowregister[r]) GPIO.out1_w1tc.val = rowgpio[r];
+                else                GPIO.out_w1tc      = rowgpio[r];
+            }
         }
-        digitalWrite(cols[c], any);
+        if (any) GPIO.out_w1ts = colgpio[c];  // digitalWrite(cols[c], HIGH);
+        else     GPIO.out_w1tc = colgpio[c];  // digitalWrite(cols[c], LOW);
+
         ets_delay_us(1);  // more stable than delayMicros()
-        digitalWrite(cols[c], LOW);
+        GPIO.out_w1tc = colgpio[c];  // digitalWrite(cols[c], LOW);
+        //ets_delay_us(1);
       }
     }
     esp_task_wdt_reset();
