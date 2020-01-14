@@ -242,7 +242,7 @@ void setup_wifi_portal() {
         "<input type=submit value='Opnieuw starten'>"
       "</form>"
       "<hr>"
-      "<h2>Configure</h2>"
+      "<h2>Configureren</h2>"
       "<form method=post>"
         "SSID: <select name=ssid onchange=\"document.getElementsByName('password')[0].value=''\">{options}</select> "
         "<a href=/rescan onclick=\"this.innerHTML='scant...';\">opnieuw scannen</a>"
