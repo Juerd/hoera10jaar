@@ -250,7 +250,7 @@ void setup_wifi_portal() {
         "<p>Mijn eigen OTA/WPA-wachtwoord: <input name=ota value='{ota}' minlength=8 required> (8+ tekens, en je wilt deze waarschijnlijk *nu* ergens opslaan)<br>"
         "<label><input type=checkbox name=portalpw value=yes{portalwpa}> &uarr;Wachtwoord&uarr; vereisen voor deze wifi-configuratieportaal</label>"
         "<p><label><input type=radio name=retry value=no{retry-no}> Wifi-configuratieportaal starten als verbinding met wifi faalt./label><br>"
-        "<label><input type=radio name=retry value=yes{retry-yes}> Oneindig blijven proberen te verbinden met wifi (hou Flash ingedrukt om hier terug te komen)</label><br>"
+        "<label><input type=radio name=retry value=yes{retry-yes}> Blijven proberen te verbinden met wifi (hou Flash ingedrukt om hier terug te komen)</label><br>"
         "<p><input type=submit value=Opslaan>"
       "</form>";
 
