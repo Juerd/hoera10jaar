@@ -131,7 +131,7 @@ void wait_fade() {
 
 void setup_ota() {
   String ota = pwgen();
-  Serial.printf("OTA password is %s\n", ota.c_str());
+  Serial.printf("OTA-wachtwoord is %s\n", ota.c_str());
 
   ArduinoOTA.setHostname(my_hostname.c_str());
   ArduinoOTA.setPassword(ota.c_str());
@@ -237,21 +237,21 @@ void setup_wifi_portal() {
     String html = "<!DOCTYPE html>\n<meta charset=UTF-8>"
       "<title>{hostname}</title>"
       "<form action=/restart method=post>"
-        "Hi, I am {hostname}."
-        "<p>Currently configured SSID: {ssid}<br>"
-        "<input type=submit value=restart>"
+        "Hallo, ik ben {hostname}."
+        "<p>Huidig ingestelde SSID: {ssid}<br>"
+        "<input type=submit value='Opnieuw starten'>"
       "</form>"
       "<hr>"
       "<h2>Configure</h2>"
       "<form method=post>"
         "SSID: <select name=ssid onchange=\"document.getElementsByName('password')[0].value=''\">{options}</select> "
-        "<a href=/rescan onclick=\"this.innerHTML='scanning...';\">rescan</a>"
-        "</select><br>Wifi WEP/WPA password: <input name=password value='{password}'><br>"
-        "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
-        "<label><input type=checkbox name=portalpw value=yes{portalwpa}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
-        "<p><label><input type=radio name=retry value=no{retry-no}> Start this wifi configuration portal after wifi connection timeout</label><br>"
-        "<label><input type=radio name=retry value=yes{retry-yes}> Keep trying to connect to wifi (press and hold Flash button to get back here)</label><br>"
-        "<p><input type=submit>"
+        "<a href=/rescan onclick=\"this.innerHTML='scant...';\">opnieuw scannen</a>"
+        "</select><br>Wifi WEP/WPA-wachtwoord: <input name=password value='{password}'><br>"
+        "<p>Mijn eigen OTA/WPA-wachtwoord: <input name=ota value='{ota}' minlength=8 required> (8+ tekens, en je wilt deze waarschijnlijk *nu* ergens opslaan)<br>"
+        "<label><input type=checkbox name=portalpw value=yes{portalwpa}> &uarr;Wachtwoord&uarr; vereisen voor deze wifi-configuratieportaal</label>"
+        "<p><label><input type=radio name=retry value=no{retry-no}> Wifi-configuratieportaal starten als verbinding met wifi faalt./label><br>"
+        "<label><input type=radio name=retry value=yes{retry-yes}> Oneindig blijven proberen te verbinden met wifi (hou Flash ingedrukt om hier terug te komen)</label><br>"
+        "<p><input type=submit value=Opslaan>"
       "</form>";
 
     String current = read("/wifi-ssid");
@@ -298,7 +298,7 @@ void setup_wifi_portal() {
   });
   
   http.on("/restart", HTTP_POST, []() {
-    http.send(200, "text/plain", "bye");
+    http.send(200, "text/plain", "Doei!");
     all(1000, false, false);
     ESP.restart();
   });
@@ -311,7 +311,7 @@ void setup_wifi_portal() {
 
   http.onNotFound([]() {
     http.sendHeader("Location", "http://" + my_hostname + "/");
-    http.send(302, "text/plain", "hi");
+    http.send(302, "text/plain", "hoi");
   });
   
   http.begin();
@@ -341,7 +341,7 @@ void setup_wifi() {
     Serial.println("First contact!\n");
     setup_wifi_portal();
   }
-  Serial.printf("Connecting to %s\n", ssid.c_str());
+  Serial.printf("Verbinden met %s...\n", ssid.c_str());
   WiFi.begin(ssid.c_str(), pw.c_str());
   setup_ota();
   wait_wifi();
@@ -366,7 +366,7 @@ void wait_wifi() {
       check_button();
     }
     if (attempts > 30 && !retry) {
-      Serial.println("Giving up. Starting config portal.");
+      Serial.println("Ik geef het op.");
       setup_wifi_portal();
     }
     Serial.println(attempts);
@@ -377,7 +377,7 @@ void wait_wifi() {
     all(1, false, false);
   }
   randomSeed(micros());  // ?
-  Serial.printf("\nIP address: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("\nIP-adres: %s\n", WiFi.localIP().toString().c_str());
 }
 
 void callback(char* topic, byte* message, unsigned int length) {
@@ -428,14 +428,13 @@ void reconnect_mqtt() {
   // WiFi.status() blijft echter op WL_CONNECTED dus slimmere afhandeling is lastig.
 
   while (!mqtt.connected()) {
-    Serial.print("Connecting to MQTT server");
+    Serial.print("Verbinden met MQTT-server...");
 
     if (mqtt.connect(my_hostname.c_str())) {
-      Serial.println("connected");
+      Serial.println("verbonden");
       mqtt.subscribe("hoera10jaar/+");
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(mqtt.state());
+      Serial.printf("mislukt, rc=%d\n", mqtt.state());
       all(5000, true, true);
       all(1, false, false);
     }
@@ -450,7 +449,7 @@ void setup() {
   pinMode(button, INPUT);
 
   Serial.begin(115200);
-  Serial.println("o hai");
+  Serial.println("c hai");
   my_hostname += Sprintf("%12" PRIx64, ESP.getEfuseMac());
   Serial.println(my_hostname);
 
@@ -468,9 +467,7 @@ void setup() {
 void network(void * pvParameters) {
   esp_task_wdt_init(30 /* seconds */, true);
   esp_err_t err = esp_task_wdt_add(NULL);
-
-  Serial.println(String("core0 loop ") + xPortGetCoreID());
-  Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog fail");
+  Serial.println(err == ESP_OK ? "Watchdog ok" : "Watchdog faal");
 
   SPIFFS.begin(true);
   setup_wifi();
