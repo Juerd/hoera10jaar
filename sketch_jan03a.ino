@@ -30,40 +30,43 @@ int          fade_interval = 5;
 int          waitstep = 10;
 int          wait = -14 * waitstep;
 
-const uint32_t     colgpio[numcols] = {  // calculate at compile time
-    (uint32_t)1 << cols[0],
-    (uint32_t)1 << cols[1],
-    (uint32_t)1 << cols[2],
-    (uint32_t)1 << cols[3],
-    (uint32_t)1 << cols[4],
-    (uint32_t)1 << cols[5]
-};
-const uint32_t     rowgpio[numcols] = {
-    rows[0] < 32 ? ((uint32_t)1 << rows[0]) : ((uint32_t)1 << (rows[0] - 32)),
-    rows[1] < 32 ? ((uint32_t)1 << rows[1]) : ((uint32_t)1 << (rows[1] - 32)),
-    rows[2] < 32 ? ((uint32_t)1 << rows[2]) : ((uint32_t)1 << (rows[2] - 32)),
-    rows[3] < 32 ? ((uint32_t)1 << rows[3]) : ((uint32_t)1 << (rows[3] - 32)),
-    rows[4] < 32 ? ((uint32_t)1 << rows[4]) : ((uint32_t)1 << (rows[4] - 32)),
-};
-const int          rowregister[numcols] = {
-    rows[0] >= 32,
-    rows[1] >= 32,
-    rows[2] >= 32,
-    rows[3] >= 32,
-    rows[4] >= 32,
-};
 
 WiFiClient   espClient;
 PubSubClient mqtt(espClient);
 
 //////// LED matrix
 
+
+// Highly optimized and tweaked
 void loop() {  // Pinned to core 1, nothing else is.
-  static int levels[] = {192,40,224,8,24,152,128,104,184,16,88,216,208,240,176,232,200,32,160,72,248,80,56,112,136,0,48,144,168,64,96,120};  // ((0..31) »*» 8).pick(*).join(",")
+  const static int levels[] = { 192,40,224,8,24,152,128,104,184,16,88,216,208,240,
+  176,232,200,32,160,72,248,80,56,112,136,0,48,144,168,64,96,120};  // ((0..31) »*» 8).pick(*).join(",")
+  const uint32_t colgpio[numcols] = {  // calculate at compile time
+    (uint32_t)1 << cols[0],
+    (uint32_t)1 << cols[1],
+    (uint32_t)1 << cols[2],
+    (uint32_t)1 << cols[3],
+    (uint32_t)1 << cols[4],
+    (uint32_t)1 << cols[5]
+  };
+  const static uint32_t rowgpio[numcols] = {
+    rows[0] < 32 ? ((uint32_t)1 << rows[0]) : ((uint32_t)1 << (rows[0] - 32)),
+    rows[1] < 32 ? ((uint32_t)1 << rows[1]) : ((uint32_t)1 << (rows[1] - 32)),
+    rows[2] < 32 ? ((uint32_t)1 << rows[2]) : ((uint32_t)1 << (rows[2] - 32)),
+    rows[3] < 32 ? ((uint32_t)1 << rows[3]) : ((uint32_t)1 << (rows[3] - 32)),
+    rows[4] < 32 ? ((uint32_t)1 << rows[4]) : ((uint32_t)1 << (rows[4] - 32)),
+  };
+  const static int rowregister[numcols] = {
+    rows[0] >= 32,
+    rows[1] >= 32,
+    rows[2] >= 32,
+    rows[3] >= 32,
+    rows[4] >= 32,
+  };
 
   for (;;) {  // Never hand back control
-    static int x = 0;
-    unsigned long start = micros();
+    //static int x = 0;
+    //unsigned long start = micros();
     // int is faster than uint_fast8_t?!
     for (int s = 0; s < 32; s++) {
       for (int c = 0; c < numcols; c++) {
@@ -90,7 +93,7 @@ void loop() {  // Pinned to core 1, nothing else is.
       }
     }
     esp_task_wdt_reset();
-    if (x++ % 10000 == 0) Serial.println(micros() - start);
+    //if (x++ % 10000 == 0) Serial.println(micros() - start);
   }
 }
 
@@ -247,7 +250,7 @@ void setup_wifi_portal() {
         "<p>My own OTA/WPA password: <input name=ota value='{ota}' minlength=8 required> (8+ chars, you may want to save this somewhere, *now*)<br>"
         "<label><input type=checkbox name=portalpw value=yes{portalwpa}> Require &uarr;password&uarr; for this wifi configuration portal</label>"
         "<p><label><input type=radio name=retry value=no{retry-no}> Start this wifi configuration portal after wifi connection timeout</label><br>"
-        "<label><input type=radio name=retry value=yes{retry-yes}> Keep trying to connect to wifi (requires flashing firmware to change config)</label><br>"
+        "<label><input type=radio name=retry value=yes{retry-yes}> Keep trying to connect to wifi (press and hold Flash button to get back here)</label><br>"
         "<p><input type=submit>"
       "</form>";
 
