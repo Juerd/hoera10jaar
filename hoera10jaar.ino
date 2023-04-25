@@ -437,6 +437,7 @@ void reconnect_mqtt() {
       Serial.printf("mislukt, rc=%d\n", mqtt.state());
       all(5000, true, true);
       all(1, false, false);
+      ESP.restart(); // voor 'badge boot sneller dan dat de MQTT online komt'
     }
   }
 }
